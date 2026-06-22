@@ -1,0 +1,120 @@
+
+x-config:
+  redis-conf: &redis-conf "./redis.conf:/usr/local/etc/redis/redis.conf:ro"
+  redis-key: &redis-key "../../../var/.vault/airflow-redis/redis.key:/usr/local/etc/redis/redis.key:ro"
+  redis-pwd: &redis-pdw "../../../var/.vault/airflow-redis/redis.pwd:/usr/local/etc/redis/redis.pwd:ro"
+  redis-crt: &redis-crt "../../../var/.vault/airflow-redis/redis.crt:/usr/local/etc/redis/redis.crt:ro"
+  ca-crt: &ca-crt "../../../var/.vault/ca/ca.crt:/usr/local/etc/redis/ca.crt:ro"
+  image: &image "ghcr.io/gigaflux/airflow-redis:7.2"
+  redis-network: &redis-network "airflow-net"
+
+services:
+  airflow-redis-1:
+    image: *image
+    container_name: airflow-redis-1
+    hostname: airflow-redis-1
+    volumes:
+      - *redis-conf
+      - *redis-key
+      - *redis-pdw
+      - *redis-crt
+      - *ca-crt
+      - airflow-redis-1_data:/data
+    networks:
+      - airflow-net
+
+#  airflow-redis-2:
+#    image: *image
+#    container_name: airflow-redis-2
+#    hostname: airflow-redis-2
+#    volumes:
+#      - *redis-conf
+#      - *redis-key
+#      - *redis-pdw
+#      - *redis-crt
+#      - *ca-crt
+#      - airflow-redis-2_data:/data
+#    networks:
+#      - airflow-net
+
+#  airflow-redis-3:
+#    image: *image
+#    container_name: airflow-redis-3
+#    hostname: airflow-redis-3
+#    volumes:
+#      - *redis-conf
+#      - *redis-key
+#      - *redis-pdw
+#      - *redis-crt
+#      - *ca-crt
+#      - airflow-redis-3_data:/data
+#    networks:
+#      - airflow-net
+
+#  airflow-redis-init:
+#    image: *image
+#    container_name: airflow-redis-init
+#    hostname: airflow-redis-init
+#    volumes:
+#      - *redis-conf
+#      - *redis-key
+#      - *redis-pdw
+#      - *redis-crt
+#      - *ca-crt
+#      - airflow-redis-init_data:/data
+#    networks:
+#      - airflow-net
+#    entrypoint: []
+#    command:
+#      - sh
+#      - -c
+#      - |
+#        echo "Waiting for Redis nodes to start..."
+#        sleep 5
+#        export REDISCLI_AUTH="$$(cat /usr/local/etc/redis/redis.pwd)"
+#        echo "Initializing 3-node Redis Cluster..."
+#        yes yes | redis-cli \
+#        --cacert /usr/local/etc/redis/ca.crt \
+#        --cert /usr/local/etc/redis/redis.crt \
+#        --key /usr/local/etc/redis/redis.key \
+#        --cluster create airflow-redis-1:6379 airflow-redis-2:6379 airflow-redis-3:6379 \
+#        --cluster-replicas 0
+#    depends_on:
+#      - airflow-redis-1
+#      - airflow-redis-2
+#      - airflow-redis-3
+
+ # airflow-redis-balancer:
+ #   image: haproxy:2.8-alpine
+ #   container_name: airflow-redis-balancer
+ #   hostname: airflow-redis-balancer
+ #   ports:
+ #     - "6379:6379"
+ #   volumes:
+ #     - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+ #   networks:
+ #     - airflow-net
+ #   restart: always
+ #   depends_on:
+ #     - airflow-redis-1
+ #     - airflow-redis-2
+ #     - airflow-redis-3
+
+volumes:
+  airflow-redis-1_data:
+    name: airflow-redis-1_data
+    external: true
+  airflow-redis-2_data:
+    name: airflow-redis-2_data
+    external: true
+  airflow-redis-3_data:
+    name: airflow-redis-3_data
+    external: true
+  airflow-redis-init_data:
+    name: airflow-redis-init_data
+    external: true
+
+networks:
+  airflow-net:
+    external: true
+

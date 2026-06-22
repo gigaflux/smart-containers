@@ -1,0 +1,35 @@
+services:
+  airflow-db:
+    image: ghcr.io/gigaflux/airflow-db:17
+    container_name: airflow-db
+    hostname: airflow-db
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD_FILE=/usr/local/etc/postgres/postgres.pwd
+      - POSTGRES_DB=airflow
+      - POSTGRES_INIT=/usr/local/bin/pg_init
+    volumes:
+      - airflow-db_data:/var/lib/postgresql/data
+      - ./airflow.conf:/etc/postgresql/conf.d/airflow.conf:ro
+      - ./init:/usr/local/bin/pg_init:ro
+      - ../../../var/.vault/airflow-db/postgres.key:/usr/local/etc/postgres/postgres.key:ro
+      - ../../../var/.vault/airflow-db/postgres.pwd:/usr/local/etc/postgres/postgres.pwd:ro
+      - ../../../var/.vault/airflow-db/postgres.crt:/usr/local/etc/postgres/postgres.crt:ro
+      - ../../../var/.vault/ca/ca.crt:/usr/local/etc/postgres/ca.crt:ro
+    command: ["/bin/bash", "/usr/local/bin/pg_init/init.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - airflow-net
+
+volumes:
+  airflow-db_data:
+    name: airflow-db_data
+    external: true
+
+networks:
+  airflow-net:
+    external: true

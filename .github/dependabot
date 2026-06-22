@@ -1,0 +1,17 @@
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "part: github_actions"
+  - package-ecosystem: "docker"
+    directory: "/src"
+    directories:
+      - "/src/airflow/airflow-core"
+      - "/src/airflow/airflow-db"
+      - "/src/airflow/airflow-redis"
+      - "/src/airflow/airflow-worker"
+    schedule:
+      interval: "weekly"

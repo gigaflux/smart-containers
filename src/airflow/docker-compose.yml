@@ -1,0 +1,242 @@
+x-config:
+  api-key: &api-key "../../var/.vault/airflow-api/airflow-api.key:/home/airflow/airflow-api.key:ro"
+  api-crt: &api-crt "../../var/.vault/airflow-api/airflow-api.crt:/home/airflow/airflow-api.crt:ro"
+  api-jwt: &api-jwt "../../var/.vault/airflow-api/airflow-api.jwt:/home/airflow/airflow-api.jwt:ro"
+  api-pwd: &api-pwd "../../var/.vault/airflow-api/airflow-api.pwd:/home/airflow/airflow-api.pwd:ro"
+  db-pwd: &db-pwd "../../var/.vault/airflow-db/postgres.pwd:/home/airflow/postgres.pwd:ro"
+  redis-pwd: &redis-pwd "../../var/.vault/airflow-redis/redis.pwd:/home/airflow/redis.pwd:ro"
+  ca-crt: &ca-crt "../../var/.vault/ca/ca.crt:/home/airflow/ca.crt:ro"
+  airflow-core: &airflow-core "ghcr.io/gigaflux/airflow-core:3.2.2-py3.12"
+  airflow-worker: &airflow-worker "ghcr.io/gigaflux/airflow-worker:3.2.2-py3.12"
+  airflow-network: &airflow-network "airflow-net"
+
+include:
+  - ./airflow-db/docker-compose.yml
+  - ./airflow-redis/docker-compose.yml
+
+services:
+  airflow-api:
+      image: *airflow-core
+      container_name: airflow-api
+      hostname: airflow-api
+      volumes:
+        - *api-key
+        - *api-crt
+        - *ca-crt
+        - *api-jwt
+        - *api-pwd
+        - *db-pwd
+      environment:
+        - AIRFLOW__API__SSL_CERT=/home/airflow/airflow-api.crt
+        - AIRFLOW__API__SSL_KEY=/home/airflow/airflow-api.key
+        - AIRFLOW__API__BASE_URL=https://airflow-api:8080
+        - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+        - AIRFLOW__SCHEDULER__STANDALONE_DAG_PROCESSOR=True
+        - AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS=admin:ADMIN,dev:ADMIN
+        - AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE=/home/airflow/users.json
+      ports:
+        - "127.0.0.1:8080:8080"
+      entrypoint: []
+      command: >
+        sh -c 'export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)" &&
+              API_PASS="$$(cat /home/airflow/airflow-api.pwd)" &&
+              DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
+              export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
+              airflow db migrate &&
+              printf '\''{"%s": "%s"}'\'' "dev" "$${API_PASS}" > /home/airflow/users.json &&
+              chmod 600 /home/airflow/users.json &&
+              exec airflow api-server'
+      depends_on:
+        airflow-db:
+          condition: service_healthy
+      healthcheck:
+        test:
+          bash -c 'curl -f -k https://localhost:8080/api/v2/monitor/health || exit 1'
+        interval: 10s
+        timeout: 5s
+        retries: 3
+        start_period: 15s
+      networks:
+        - *airflow-network
+
+  airflow-dag:
+    image: *airflow-core
+    container_name: airflow-dag
+    hostname: airflow-dag
+    volumes:
+      - *ca-crt
+      - *api-jwt
+      - *api-pwd
+      - *db-pwd
+      - ../../var/dags:/opt/airflow/dags:ro
+      - ../../var/plugins:/opt/airflow/plugins:ro
+    environment:
+      - AIRFLOW__API__SSL_CERT=/home/airflow/ca.crt
+      - AIRFLOW__CORE__EXECUTION_API_SERVER_URL=https://airflow-api:8080/execution/
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__SCHEDULER__STANDALONE_DAG_PROCESSOR=True
+      - AIRFLOW__CORE__DAGS_FOLDER=/opt/airflow/dags
+      - AIRFLOW__CORE__PLUGINS_FOLDER=/opt/airflow/plugins
+    entrypoint: []
+    command: >
+      sh -c 'export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)" &&
+            DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
+            export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
+            exec airflow dag-processor'
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        bash -c 'DB_PASS="$$(cat /home/airflow/postgres.pwd)" && 
+        export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" && 
+        airflow jobs check --job-type DagProcessorJob --hostname $$HOSTNAME'
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - *airflow-network
+
+  airflow-scheduler:
+    image: *airflow-core
+    container_name: airflow-scheduler
+    hostname: airflow-scheduler
+    volumes:
+      - *ca-crt
+      - *api-jwt
+      - *db-pwd
+      - *redis-pwd
+    environment:
+      - AIRFLOW__API__SSL_CERT=/home/airflow/ca.crt
+      - AIRFLOW__CORE__EXECUTION_API_SERVER_URL=https://airflow-api:8080/execution/
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__SCHEDULER__STANDALONE_DAG_PROCESSOR=True
+      - AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS__VISIBILITY_TIMEOUT=20000
+    entrypoint: [ ]
+    command: >
+      sh -c 'export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)" &&
+            export DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
+            export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
+            export REDIS_PWD="$$(cat /home/airflow/redis.pwd)" &&
+            export AIRFLOW__CELERY__BROKER_URL="redis://:$${REDIS_PWD}@airflow-redis-1:6379/0" &&
+            exec airflow scheduler'
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+      airflow-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        bash -c 'DB_PASS="$$(cat /home/airflow/postgres.pwd)" && 
+        export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
+        airflow jobs check --job-type SchedulerJob --hostname $$HOSTNAME'
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - *airflow-network
+
+  airflow-worker:
+    image: *airflow-worker
+    container_name: airflow-worker
+    hostname: airflow-worker
+    volumes:
+      - *ca-crt
+      - *api-jwt
+      - *db-pwd
+      - *redis-pwd
+      - ../../var/dags:/opt/airflow/dags:ro
+      - ../../var/plugins:/opt/airflow/plugins:ro
+    environment:
+      - AIRFLOW__API__SSL_CERT=/home/airflow/ca.crt
+      - AIRFLOW__CORE__EXECUTION_API_SERVER_URL=https://airflow-api:8080/execution/
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__CORE__DAGS_FOLDER=/opt/airflow/dags
+      - AIRFLOW__CORE__PLUGINS_FOLDER=/opt/airflow/plugins
+      #- AIRFLOW__CELERY__SSL_MUTUAL_TLS=False
+      #- AIRFLOW__CELERY__SSL_CACERT=/home/airflow/ca.crt
+      #- AIRFLOW__CELERY__SSL_ACTIVE=True
+      #- AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS__SSL_CERT_REQS=none
+      #- AIRFLOW__CELERY__SSL_MUTUAL_TLS=False
+      - AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS__VISIBILITY_TIMEOUT=20000
+    entrypoint: [ ]
+    command: >
+      bash -c 'export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)" &&
+            export DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
+            export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
+            export REDIS_PWD="$$(cat /home/airflow/redis.pwd)" &&
+            export AIRFLOW__CELERY__BROKER_URL="redis://:$${REDIS_PWD}@airflow-redis-1:6379/0" &&
+            exec airflow celery worker'
+    depends_on:
+      airflow-redis-1:
+        condition: service_started
+      #airflow-redis-2:
+      #  condition: service_started
+      #airflow-redis-3:
+      #  condition: service_started
+      airflow-db:
+        condition: service_healthy
+      airflow-api:
+        condition: service_healthy
+    healthcheck:
+      test: >
+        bash -c '
+        REDIS_PWD=$$(cat /home/airflow/redis.pwd) &&
+        AIRFLOW__CELERY__BROKER_URL="redis://:$$REDIS_PWD@airflow-redis-1:6379/0" &&
+        celery --app airflow.providers.celery.executors.celery_executor.app \
+          -b "$$AIRFLOW__CELERY__BROKER_URL" \
+          inspect ping \
+          -d celery@$$HOSTNAME
+        '
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - *airflow-network
+
+  airflow-trigerer:
+    image: *airflow-worker
+    container_name: airflow-trigerer
+    hostname: airflow-trigerer
+    volumes:
+      - *ca-crt
+      - *api-jwt
+      - *db-pwd
+      - *redis-pwd
+    environment:
+      - AIRFLOW__API__SSL_CERT=/home/airflow/ca.crt
+      - AIRFLOW__CORE__EXECUTION_API_SERVER_URL=https://airflow-api:8080/execution/
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS__VISIBILITY_TIMEOUT=20000
+    entrypoint: [ ]
+    command: >
+        bash -c 'export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)" &&
+            export DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
+            export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
+            export REDIS_PWD="$$(cat /home/airflow/redis.pwd)" &&
+            export AIRFLOW__CELERY__BROKER_URL="redis://:$${REDIS_PWD}@airflow-redis-1:6379/0" &&
+            exec airflow triggerer'
+    depends_on:
+      airflow-redis-1:
+        condition: service_started
+      airflow-db:
+        condition: service_healthy
+      airflow-api:
+        condition: service_healthy
+    healthcheck:
+      test: >
+        bash -c '
+        DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
+        export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$$DB_PASS@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
+        airflow jobs check --job-type TriggererJob --hostname $$HOSTNAME'
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    networks:
+      - *airflow-network
