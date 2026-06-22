@@ -1,8 +1,5 @@
 # Smart Containerized Environment
 
-[![Apache Airflow](https://shields.io)](https://airflow.apache.org)
-[![Apache Spark](https://shields.io)](https://spark.apache.org)
-
 This repository contains smart-ready Docker configurations, custom single-architecture images, and automation scripts for running test environments. It isolates environments, manages complex multi-arch system dependencies, and provides a predictable local development setup.
 
 # 🎯 Primary Goal: Local Big Data Development & Testing
