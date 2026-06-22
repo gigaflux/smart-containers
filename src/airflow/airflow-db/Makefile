@@ -51,12 +51,12 @@ push:
 	@echo "$(CR_PAT)" | docker login ghcr.io -u "$(GITHUB_ACTOR)" --password-stdin
 	docker buildx build \
 		--platform linux/amd64,linux/arm64 \
-		-t $(IMAGE_FULL_NAME) \
+		-t $(IMAGE_SHORT_NAME) \
 		--push \
 		--build-arg PG_VER=$(PG_VER) \
 		--build-arg REVISION=$(GIT_REVISION) \
 		--build-arg SHA=$(GIT_SHA) .
-	docker tag $(IMAGE_FULL_NAME) $(IMAGE_SHORT_NAME)
+	# docker tag $(IMAGE_FULL_NAME) $(IMAGE_SHORT_NAME)
 	docker logout ghcr.io
 
 release: build push clean

@@ -1,4 +1,4 @@
-ARG REDIS_VER=3.2.2
+ARG REDIS_VER=7.2
 ARG REVISION="unknown"
 ARG SHA="unknown"
 

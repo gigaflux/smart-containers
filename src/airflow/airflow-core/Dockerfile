@@ -23,12 +23,14 @@ Acquire::AllowUnauthenticated "true";\n\
 APT::Get::AllowUnauthenticated "true";' > /etc/apt/apt.conf.d/99custom-options
 
 # update system and install build packets
-RUN apt-get update && apt-get upgrade -y \
-  && apt-get update && apt-get install -y --only-upgrade perl perl-base \
-  && apt-get update && apt-get install -y --no-install-recommends gcc g++ libc6-dev libsasl2-dev libkrb5-dev pkg-config \
-  && apt-get autoremove -yqq --purge \
-  && apt-get clean \
-  && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+  apt-get update && apt-get upgrade -y \
+  && apt-get update && apt-get install -y --no-install-recommends --only-upgrade perl perl-base \
+  && apt-get update && apt-get install -y --no-install-recommends gcc g++ libc6-dev libsasl2-dev libkrb5-dev pkg-config
+  #&& apt-get autoremove -yqq --purge \
+  #&& apt-get clean \
+  #&& rm -rf /var/lib/apt/lists/*
 
 USER airflow
 
@@ -71,7 +73,9 @@ LABEL org.opencontainers.image.ref.name="airflow-core"
 LABEL org.opencontainers.image.base.name="apache/airflow:${AIRFLOW_VER}-slim-python${PYTHON_VER}"
 LABEL org.opencontainers.image.licenses="MIT"
 USER root
-RUN echo 'Acquire::ForceIPv4 "true";\n\
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    echo 'Acquire::ForceIPv4 "true";\n\
 Acquire::http::Timeout "5";\n\
 Acquire::https::Timeout "5";\n\
 Acquire::Retries "5";\n\
@@ -81,9 +85,9 @@ APT::Get::AllowUnauthenticated "true";' > /etc/apt/apt.conf.d/99custom-options \
     && apt-get update && apt-get upgrade -y \
     && apt-get update && apt-get install -y --only-upgrade perl perl-base \
     && apt-get update && apt-get install -y --no-install-recommends libsasl2-2 libkrb5-3 \
-    && apt-get autoremove -yqq --purge wget gnupg "mariadb*" "mysql*" "libmari*" "libmysql*" \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get autoremove -yqq --purge wget gnupg "mariadb*" "mysql*" "libmari*" "libmysql*"
+    #&& apt-get clean \
+    #&& rm -rf /var/lib/apt/lists/*
 
 USER airflow
 

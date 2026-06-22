@@ -20,13 +20,15 @@ ARG CONSTRAINT_URL="https://raw.githubusercontent.com/apache/airflow/constraints
 USER root
 
 # update system and install build packets
-RUN echo 'Acquire::ForceIPv4 "true";\nAcquire::http::Timeout "5";\nAcquire::https::Timeout "5";\nAcquire::Retries "5";' > /etc/apt/apt.conf.d/99custom-options \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+  echo 'Acquire::ForceIPv4 "true";\nAcquire::http::Timeout "5";\nAcquire::https::Timeout "5";\nAcquire::Retries "5";' > /etc/apt/apt.conf.d/99custom-options \
   && apt-get update && apt-get upgrade -y \
-  && apt-get update && apt-get install -y --only-upgrade perl perl-base \
-  && apt-get update && apt-get install -y --no-install-recommends zip gcc g++ libc6-dev libsasl2-dev libkrb5-dev pkg-config \
-  && apt-get autoremove -yqq --purge \
-  && apt-get clean \
-  && rm -rf /var/lib/apt/lists/*
+  && apt-get update && apt-get install -y --no-install-recommends --only-upgrade perl perl-base \
+  && apt-get update && apt-get install -y --no-install-recommends zip gcc g++ libc6-dev libsasl2-dev libkrb5-dev pkg-config
+  # && apt-get autoremove -yqq --purge \
+  # && apt-get clean
+  #&& rm -rf /var/lib/apt/lists/*
 
 USER airflow
 
@@ -145,26 +147,25 @@ LABEL org.opencontainers.image.licenses="MIT"
 ENV DEBIAN_FRONTEND=noninteractive
 
 USER root
-RUN echo 'Acquire::ForceIPv4 "true";\nAcquire::http::Timeout "5";\nAcquire::https::Timeout "5";\nAcquire::Retries "5";' > /etc/apt/apt.conf.d/99custom-options \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
+    echo 'Acquire::ForceIPv4 "true";\nAcquire::http::Timeout "5";\nAcquire::https::Timeout "5";\nAcquire::Retries "5";' > /etc/apt/apt.conf.d/99custom-options \
     && apt-get update && apt-get upgrade -y \
-    && apt-get update && apt-get install -y \
-    --only-upgrade perl perl-base \
-    && apt-get update && apt-get install -y \
-    --no-install-recommends libsasl2-2 libkrb5-3 wget ca-certificates gnupg \
+    && apt-get update && apt-get install -y --no-install-recommends --only-upgrade perl perl-base \
+    && apt-get update && apt-get install -y --no-install-recommends libsasl2-2 libkrb5-3 wget ca-certificates gnupg \
     && mkdir -p /etc/apt/keyrings \
     && wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/adoptium.gpg > /dev/null \
     && echo "deb https://packages.adoptium.net/artifactory/deb $(awk -F= '/^VERSION_CODENAME/{print$2}' /etc/os-release) main" | sudo tee /etc/apt/sources.list.d/adoptium.list \
-    && apt-get update && apt-get install -y \
-    --no-install-recommends temurin-8-jdk \
+    && apt-get update && apt-get install -y --no-install-recommends temurin-8-jdk \
     && rm -f /etc/apt/sources.list.d/adoptium.list \
     && rm -f /etc/apt/keyrings/adoptium.asc \
-    && apt-get autoremove -yqq --purge wget gnupg "mariadb*" "mysql*" "libmari*" "libmysql*" \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get autoremove -yqq --purge wget gnupg "mariadb*" "mysql*" "libmari*" "libmysql*"
+    # && apt-get clean \
+    # && rm -rf /var/lib/apt/lists/*
 
 ENV JAVA_HOME=/usr/lib/jvm/default-java
 RUN JAVA_REAL_PATH=$(ls -d /usr/lib/jvm/temurin-8-jdk-*)  \
-    && ln -s ${JAVA_REAL_PATH} ${JAVA_HOME} \
+    && ln -s "${JAVA_REAL_PATH}" "${JAVA_HOME}" \
     && chmod 664 /etc/ssl/certs/adoptium/cacerts
 ENV PATH=$JAVA_HOME/bin:$PATH
 COPY --chown=airflow:root entrypoint.sh /entrypoint.sh
