@@ -68,7 +68,7 @@ check:
 	docker run --rm \
   	-v /var/run/docker.sock:/var/run/docker.sock \
   	-v $$HOME/.cache/trivy:/root/.cache/trivy \
-  	aquasec/trivy:latest image --scanners vuln,secret --severity CRITICAL,HIGH --ignore-unfixed  $(IMAGE_SHORT_NAME)-$(PLATFORM)
+  	aquasec/trivy:latest image --scanners vuln,secret --severity CRITICAL,HIGH --ignore-unfixed  $(IMAGE_SHORT_NAME)
 
 clean:
 	@echo "Cleaning up dangling local Docker build cache layers..."
