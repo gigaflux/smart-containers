@@ -85,7 +85,7 @@ APT::Get::AllowUnauthenticated "true";' > /etc/apt/apt.conf.d/99custom-options \
     && apt-get update && apt-get upgrade -y \
     && apt-get update && apt-get install -y --only-upgrade perl perl-base \
     && apt-get update && apt-get install -y --no-install-recommends libsasl2-2 libkrb5-3 \
-    && apt-get autoremove -yqq --purge wget gnupg "mariadb*" "mysql*" "libmari*" "libmysql*"
+    && apt-get autoremove -yqq --purge wget gnupg "mariadb*" "mysql*" "libmari*" "libmysql*" docker-ce-cli docker.io
     #&& apt-get clean \
     #&& rm -rf /var/lib/apt/lists/*
 

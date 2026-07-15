@@ -3,7 +3,7 @@ ARG REVISION="unknown"
 ARG SHA="unknown"
 ARG GOSU_VER=1.19
 
-FROM golang:1.25.11-alpine AS gosu-builder
+FROM golang:1.25.12-alpine AS gosu-builder
 ARG PG_VER
 ARG REVISION
 ARG SHA

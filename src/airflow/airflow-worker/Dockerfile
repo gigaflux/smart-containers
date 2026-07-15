@@ -159,7 +159,7 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     && apt-get update && apt-get install -y --no-install-recommends temurin-8-jdk \
     && rm -f /etc/apt/sources.list.d/adoptium.list \
     && rm -f /etc/apt/keyrings/adoptium.asc \
-    && apt-get autoremove -yqq --purge wget gnupg "mariadb*" "mysql*" "libmari*" "libmysql*"
+    && apt-get autoremove -yqq --purge wget gnupg "mariadb*" "mysql*" "libmari*" "libmysql*" docker-ce-cli docker.io
     # && apt-get clean \
     # && rm -rf /var/lib/apt/lists/*
 
