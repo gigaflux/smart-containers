@@ -2,7 +2,7 @@
 x-config:
   redis-conf: &redis-conf "./redis.conf:/usr/local/etc/redis/redis.conf:ro"
   redis-key: &redis-key "../../../var/.vault/airflow-redis/redis.key:/usr/local/etc/redis/redis.key:ro"
-  redis-pwd: &redis-pdw "../../../var/.vault/airflow-redis/redis.pwd:/usr/local/etc/redis/redis.pwd:ro"
+  redis-pwd: &redis-pwd "../../../var/.vault/airflow-redis/redis.pwd:/usr/local/etc/redis/redis.pwd:ro"
   redis-crt: &redis-crt "../../../var/.vault/airflow-redis/redis.crt:/usr/local/etc/redis/redis.crt:ro"
   ca-crt: &ca-crt "../../../var/.vault/ca/ca.crt:/usr/local/etc/redis/ca.crt:ro"
   image: &image "ghcr.io/gigaflux/airflow-redis:7.2"
@@ -15,12 +15,22 @@ services:
     volumes:
       - *redis-conf
       - *redis-key
-      - *redis-pdw
+      - *redis-pwd
       - *redis-crt
       - *ca-crt
       - airflow-redis-1_data:/data
     networks:
       - airflow-net
+    healthcheck:
+      test: >
+        sh -c '
+        REDIS_PWD=$$(cat /usr/local/etc/redis/redis.pwd) &&
+        export REDISCLI_AUTH=$$REDIS_PWD &&
+        redis-cli ping'
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 #  airflow-redis-2:
 #    image: *image

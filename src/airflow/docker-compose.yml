@@ -15,6 +15,26 @@ include:
   - ./airflow-redis/docker-compose.yml
 
 services:
+
+  airflow-init:
+    image: *airflow-core
+    container_name: airflow-init
+    hostname: airflow-init
+    volumes:
+      - *ca-crt
+      - *db-pwd
+    entrypoint: [ ]
+    command: >
+      sh -c '
+        DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
+        export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
+        airflow db migrate'
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+    networks:
+      - *airflow-network
+
   airflow-api:
       image: *airflow-core
       container_name: airflow-api
@@ -26,6 +46,9 @@ services:
         - *api-jwt
         - *api-pwd
         - *db-pwd
+      env_file:
+        - ./airflow-core.env
+        - ./airflow-api.env
       environment:
         - AIRFLOW__API__SSL_CERT=/home/airflow/airflow-api.crt
         - AIRFLOW__API__SSL_KEY=/home/airflow/airflow-api.key
@@ -42,13 +65,12 @@ services:
               API_PASS="$$(cat /home/airflow/airflow-api.pwd)" &&
               DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
               export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
-              airflow db migrate &&
               printf '\''{"%s": "%s"}'\'' "dev" "$${API_PASS}" > /home/airflow/users.json &&
               chmod 600 /home/airflow/users.json &&
               exec airflow api-server'
       depends_on:
-        airflow-db:
-          condition: service_healthy
+        airflow-init:
+          condition: service_completed_successfully
       healthcheck:
         test:
           bash -c 'curl -f -k https://localhost:8080/api/v2/monitor/health || exit 1'
@@ -70,6 +92,9 @@ services:
       - *db-pwd
       - ../../var/dags:/opt/airflow/dags:ro
       - ../../var/plugins:/opt/airflow/plugins:ro
+    env_file:
+      - ./airflow-core.env
+      - ./airflow-dag.env
     environment:
       - AIRFLOW__API__SSL_CERT=/home/airflow/ca.crt
       - AIRFLOW__CORE__EXECUTION_API_SERVER_URL=https://airflow-api:8080/execution/
@@ -84,8 +109,6 @@ services:
             export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
             exec airflow dag-processor'
     depends_on:
-      airflow-db:
-        condition: service_healthy
       airflow-api:
         condition: service_healthy
     healthcheck:
@@ -109,6 +132,9 @@ services:
       - *api-jwt
       - *db-pwd
       - *redis-pwd
+    env_file:
+      - ./airflow-core.env
+      - ./airflow-scheduler.env
     environment:
       - AIRFLOW__API__SSL_CERT=/home/airflow/ca.crt
       - AIRFLOW__CORE__EXECUTION_API_SERVER_URL=https://airflow-api:8080/execution/
@@ -124,10 +150,10 @@ services:
             export AIRFLOW__CELERY__BROKER_URL="redis://:$${REDIS_PWD}@airflow-redis-1:6379/0" &&
             exec airflow scheduler'
     depends_on:
-      airflow-db:
-        condition: service_healthy
       airflow-api:
         condition: service_healthy
+      airflow-redis-1:
+         condition: service_healthy
     healthcheck:
       test:
         bash -c 'DB_PASS="$$(cat /home/airflow/postgres.pwd)" && 
@@ -147,10 +173,12 @@ services:
     volumes:
       - *ca-crt
       - *api-jwt
-      - *db-pwd
       - *redis-pwd
       - ../../var/dags:/opt/airflow/dags:ro
       - ../../var/plugins:/opt/airflow/plugins:ro
+    env_file:
+      - ./airflow-core.env
+      - ./airflow-worker.env
     environment:
       - AIRFLOW__API__SSL_CERT=/home/airflow/ca.crt
       - AIRFLOW__CORE__EXECUTION_API_SERVER_URL=https://airflow-api:8080/execution/
@@ -166,20 +194,16 @@ services:
     entrypoint: [ ]
     command: >
       bash -c 'export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)" &&
-            export DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
-            export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
             export REDIS_PWD="$$(cat /home/airflow/redis.pwd)" &&
             export AIRFLOW__CELERY__BROKER_URL="redis://:$${REDIS_PWD}@airflow-redis-1:6379/0" &&
             exec airflow celery worker'
     depends_on:
       airflow-redis-1:
-        condition: service_started
+        condition: service_healthy
       #airflow-redis-2:
       #  condition: service_started
       #airflow-redis-3:
       #  condition: service_started
-      airflow-db:
-        condition: service_healthy
       airflow-api:
         condition: service_healthy
     healthcheck:
@@ -199,15 +223,18 @@ services:
     networks:
       - *airflow-network
 
-  airflow-trigerer:
+  airflow-triggerer:
     image: *airflow-worker
-    container_name: airflow-trigerer
-    hostname: airflow-trigerer
+    container_name: airflow-triggerer
+    hostname: airflow-triggerer
     volumes:
       - *ca-crt
       - *api-jwt
-      - *db-pwd
       - *redis-pwd
+      - *db-pwd
+    env_file:
+      - ./airflow-core.env
+      - ./airflow-triggerer.env
     environment:
       - AIRFLOW__API__SSL_CERT=/home/airflow/ca.crt
       - AIRFLOW__CORE__EXECUTION_API_SERVER_URL=https://airflow-api:8080/execution/
@@ -216,24 +243,23 @@ services:
     entrypoint: [ ]
     command: >
         bash -c 'export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)" &&
-            export DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
-            export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
             export REDIS_PWD="$$(cat /home/airflow/redis.pwd)" &&
             export AIRFLOW__CELERY__BROKER_URL="redis://:$${REDIS_PWD}@airflow-redis-1:6379/0" &&
+            DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
+            export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
             exec airflow triggerer'
     depends_on:
       airflow-redis-1:
-        condition: service_started
-      airflow-db:
         condition: service_healthy
       airflow-api:
         condition: service_healthy
     healthcheck:
       test: >
         bash -c '
-        DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
-        export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$$DB_PASS@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
-        airflow jobs check --job-type TriggererJob --hostname $$HOSTNAME'
+          export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)" &&
+          DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
+          export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
+          airflow jobs check --job-type TriggererJob --hostname $$HOSTNAME'
       interval: 30s
       timeout: 10s
       retries: 3
