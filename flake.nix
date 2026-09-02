@@ -33,8 +33,9 @@
             pkgs.vim # vim
             pkgs.nano # nano
             pkgs.curl # curl
-            pkgs.git #git
-            pkgs.openssl #openssl 
+            pkgs.git # git
+            pkgs.openssl # openssl
+            pkgs.gnumake # make
           ];
         };
       });
