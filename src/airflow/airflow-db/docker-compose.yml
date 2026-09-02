@@ -12,11 +12,14 @@ services:
       - airflow-db_data:/var/lib/postgresql/data
       - ./airflow.conf:/etc/postgresql/conf.d/airflow.conf:ro
       - ./init:/usr/local/bin/pg_init:ro
-      - ../../../var/.vault/airflow-db/postgres.key:/usr/local/etc/postgres/postgres.key:ro
-      - ../../../var/.vault/airflow-db/postgres.pwd:/usr/local/etc/postgres/postgres.pwd:ro
-      - ../../../var/.vault/airflow-db/postgres.crt:/usr/local/etc/postgres/postgres.crt:ro
-      - ../../../var/.vault/ca/ca.crt:/usr/local/etc/postgres/ca.crt:ro
-    command: ["/bin/bash", "/usr/local/bin/pg_init/init.sh"]
+      - ../../../var/.vault:/tmp/.vault:ro
+    entrypoint: [ ]
+    command: >
+      sh -c 'mkdir -p /usr/local/etc/postgres &&
+            cp -r /tmp/.vault/airflow-db/. /usr/local/etc/postgres/ &&
+            cp -f /tmp/.vault/ca/ca.crt /usr/local/etc/postgres/ &&
+            chown postgres:postgres -R /usr/local/etc/postgres &&
+            /bin/bash /usr/local/bin/pg_init/init.sh'
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
       interval: 10s

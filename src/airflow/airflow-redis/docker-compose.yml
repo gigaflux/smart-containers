@@ -6,7 +6,6 @@ x-config:
   redis-crt: &redis-crt "../../../var/.vault/airflow-redis/redis.crt:/usr/local/etc/redis/redis.crt:ro"
   ca-crt: &ca-crt "../../../var/.vault/ca/ca.crt:/usr/local/etc/redis/ca.crt:ro"
   image: &image "ghcr.io/gigaflux/airflow-redis:7.2"
-  redis-network: &redis-network "airflow-net"
 
 services:
   airflow-redis-1:
