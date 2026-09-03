@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set -o pipefail
 
 # Validity period for the certificates (in days)
 DAYS=3650
@@ -63,8 +64,8 @@ generate_certs()  {
   "DNS:airflow-api,DNS:localhost,IP:127.0.0.1"
 
   # AIRFLOW WEBSERVER: Secured user login UI
-  generate_cert "${vault}" "airflow-web" "airflow-web" "/CN=airflow-web" \
-  "DNS:airflow-web,DNS:localhost,IP:127.0.0.1"
+  #generate_cert "${vault}" "airflow-web" "airflow-web" "/CN=airflow-web" \
+  #"DNS:airflow-web,DNS:localhost,IP:127.0.0.1"
 }
 
 generate_password() {
@@ -101,6 +102,29 @@ generate_api_token() {
   openssl rand -hex 32 > "${vault}/airflow-api/airflow-api.jwt"
 }
 
+make_sec_store() {
+  local vault="$1"
+  set -- airflow-db postgres airflow-redis redis airflow-api airflow
+  rm -rf "${vault}"/users
+  mkdir "${vault}"/users
+  while [[ "$#" -gt 0 ]]; do
+    rm -rf "${vault}"/users/"$2"
+    mkdir -p "${vault}"/users/"$2"
+    cp -r "${vault}"/"$1"/. "${vault}"/users/"$2"
+    cp -f "${vault}"/ca/ca.crt "${vault}"/users/"$2"
+    if [[ "$2" == "airflow" ]]; then
+      cp -f "${vault}"/airflow-db/postgres.pwd "${vault}"/airflow-redis/redis.pwd "${vault}"/users/"$2"
+    fi
+    chmod -R 444 "${vault}"/users/"$2"/*
+    chmod 755 "${vault}"/users/"$2"
+    chmod 755 "${vault}"/"$1"
+    shift 2
+  done
+  chmod 755 "${vault}"/users
+  chmod 755 "${vault}"/ca
+  chmod 755 "${vault}"
+}
+
 main() {
   local root
   root="$(dirname "$(dirname "$(dirname "$(readlink -f "$1")")")")"
@@ -112,6 +136,7 @@ main() {
   generate_certs "${vault}"
   generate_passwords "${vault}"
   generate_api_token "${vault}"
+  make_sec_store "${vault}"
   create_docker_network
   create_docker_volumes
   mkdir -p "${root}/var/dags" "${root}/var/plugins"

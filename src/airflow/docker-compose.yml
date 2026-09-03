@@ -1,11 +1,4 @@
 x-config:
-  api-key: &api-key "../../var/.vault/airflow-api/airflow-api.key:/home/airflow/airflow-api.key:ro"
-  api-crt: &api-crt "../../var/.vault/airflow-api/airflow-api.crt:/home/airflow/airflow-api.crt:ro"
-  api-jwt: &api-jwt "../../var/.vault/airflow-api/airflow-api.jwt:/home/airflow/airflow-api.jwt:ro"
-  api-pwd: &api-pwd "../../var/.vault/airflow-api/airflow-api.pwd:/home/airflow/airflow-api.pwd:ro"
-  db-pwd: &db-pwd "../../var/.vault/airflow-db/postgres.pwd:/home/airflow/postgres.pwd:ro"
-  redis-pwd: &redis-pwd "../../var/.vault/airflow-redis/redis.pwd:/home/airflow/redis.pwd:ro"
-  ca-crt: &ca-crt "../../var/.vault/ca/ca.crt:/home/airflow/ca.crt:ro"
   airflow-core: &airflow-core "ghcr.io/gigaflux/airflow-core:3.2.2-py3.12"
   airflow-worker: &airflow-worker "ghcr.io/gigaflux/airflow-worker:3.2.2-py3.12"
   airflow-network: &airflow-network "airflow-net"
@@ -21,14 +14,23 @@ services:
     container_name: airflow-init
     hostname: airflow-init
     volumes:
-      - *ca-crt
-      - *db-pwd
+      - ../../var/.vault/users/airflow:/tmp/airflow:ro
     entrypoint: [ ]
     command: >
-      sh -c '
-        DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
-        export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
-        airflow db migrate'
+      bash -c '
+        set -e
+        set -o pipefail
+        mkdir -p /home/airflow
+        cp -r /tmp/airflow/. /home/airflow/
+        chmod 400 /home/airflow/airflow-api.jwt
+        chmod 400 /home/airflow/airflow-api.key
+        chmod 400 /home/airflow/airflow-api.pwd
+        chmod 400 /home/airflow/postgres.pwd
+        chmod 400 /home/airflow/redis.pwd
+        DB_PASS="$$(cat /home/airflow/postgres.pwd)"
+        export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt"
+        exec airflow db migrate
+      '
     depends_on:
       airflow-db:
         condition: service_healthy
@@ -40,12 +42,7 @@ services:
       container_name: airflow-api
       hostname: airflow-api
       volumes:
-        - *api-key
-        - *api-crt
-        - *ca-crt
-        - *api-jwt
-        - *api-pwd
-        - *db-pwd
+        - ../../var/.vault/users/airflow:/tmp/airflow:ro
       env_file:
         - ./airflow-core.env
         - ./airflow-api.env
@@ -59,15 +56,26 @@ services:
         - AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE=/home/airflow/users.json
       ports:
         - "127.0.0.1:8080:8080"
-      entrypoint: []
+      entrypoint: [ ]
       command: >
-        sh -c 'export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)" &&
-              API_PASS="$$(cat /home/airflow/airflow-api.pwd)" &&
-              DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
-              export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
-              printf '\''{"%s": "%s"}'\'' "dev" "$${API_PASS}" > /home/airflow/users.json &&
-              chmod 600 /home/airflow/users.json &&
-              exec airflow api-server'
+        bash -c '
+          set -e
+          set -o pipefail
+          mkdir -p /home/airflow
+          cp -r /tmp/airflow/. /home/airflow/
+          chmod 400 /home/airflow/airflow-api.jwt
+          chmod 400 /home/airflow/airflow-api.key
+          chmod 400 /home/airflow/airflow-api.pwd
+          chmod 400 /home/airflow/postgres.pwd
+          chmod 400 /home/airflow/redis.pwd
+          export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)"
+          API_PASS="$$(cat /home/airflow/airflow-api.pwd)"
+          DB_PASS="$$(cat /home/airflow/postgres.pwd)"
+          export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt"
+          printf '\''{"%s": "%s"}'\'' "dev" "$${API_PASS}" > /home/airflow/users.json
+          chmod 600 /home/airflow/users.json
+          exec airflow api-server
+        '
       depends_on:
         airflow-init:
           condition: service_completed_successfully
@@ -86,10 +94,7 @@ services:
     container_name: airflow-dag
     hostname: airflow-dag
     volumes:
-      - *ca-crt
-      - *api-jwt
-      - *api-pwd
-      - *db-pwd
+      - ../../var/.vault/users/airflow:/tmp/airflow:ro
       - ../../var/dags:/opt/airflow/dags:ro
       - ../../var/plugins:/opt/airflow/plugins:ro
     env_file:
@@ -104,18 +109,33 @@ services:
       - AIRFLOW__CORE__PLUGINS_FOLDER=/opt/airflow/plugins
     entrypoint: []
     command: >
-      sh -c 'export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)" &&
-            DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
-            export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
-            exec airflow dag-processor'
+      bash -c '
+        set -e
+        set -o pipefail
+        mkdir -p /home/airflow
+        cp -r /tmp/airflow/. /home/airflow/
+        chmod 400 /home/airflow/airflow-api.jwt
+        chmod 400 /home/airflow/airflow-api.key
+        chmod 400 /home/airflow/airflow-api.pwd
+        chmod 400 /home/airflow/postgres.pwd
+        chmod 400 /home/airflow/redis.pwd
+        export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)"
+        DB_PASS="$$(cat /home/airflow/postgres.pwd)"
+        export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt"
+        exec airflow dag-processor
+      '
     depends_on:
       airflow-api:
         condition: service_healthy
     healthcheck:
       test:
-        bash -c 'DB_PASS="$$(cat /home/airflow/postgres.pwd)" && 
-        export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" && 
-        airflow jobs check --job-type DagProcessorJob --hostname $$HOSTNAME'
+        bash -c '
+          set -e
+          set -o pipefail
+          DB_PASS="$$(cat /home/airflow/postgres.pwd)"
+          export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt"
+          airflow jobs check --job-type DagProcessorJob --hostname $$HOSTNAME
+        '
       interval: 30s
       timeout: 10s
       retries: 3
@@ -128,10 +148,7 @@ services:
     container_name: airflow-scheduler
     hostname: airflow-scheduler
     volumes:
-      - *ca-crt
-      - *api-jwt
-      - *db-pwd
-      - *redis-pwd
+      - ../../var/.vault/users/airflow:/tmp/airflow:ro
     env_file:
       - ./airflow-core.env
       - ./airflow-scheduler.env
@@ -143,12 +160,22 @@ services:
       - AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS__VISIBILITY_TIMEOUT=20000
     entrypoint: [ ]
     command: >
-      sh -c 'export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)" &&
-            export DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
-            export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
-            export REDIS_PWD="$$(cat /home/airflow/redis.pwd)" &&
-            export AIRFLOW__CELERY__BROKER_URL="redis://:$${REDIS_PWD}@airflow-redis-1:6379/0" &&
-            exec airflow scheduler'
+      sh -c '
+        set -e
+        mkdir -p /home/airflow
+        cp -r /tmp/airflow/. /home/airflow/
+        chmod 400 /home/airflow/airflow-api.jwt
+        chmod 400 /home/airflow/airflow-api.key
+        chmod 400 /home/airflow/airflow-api.pwd
+        chmod 400 /home/airflow/postgres.pwd
+        chmod 400 /home/airflow/redis.pwd
+        export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)"
+        export DB_PASS="$$(cat /home/airflow/postgres.pwd)"
+        export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt"
+        export REDIS_PWD="$$(cat /home/airflow/redis.pwd)"
+        export AIRFLOW__CELERY__BROKER_URL="redis://:$${REDIS_PWD}@airflow-redis-1:6379/0"
+        exec airflow scheduler
+      '
     depends_on:
       airflow-api:
         condition: service_healthy
@@ -156,9 +183,13 @@ services:
          condition: service_healthy
     healthcheck:
       test:
-        bash -c 'DB_PASS="$$(cat /home/airflow/postgres.pwd)" && 
-        export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
-        airflow jobs check --job-type SchedulerJob --hostname $$HOSTNAME'
+        bash -c '
+          set -e
+          set -o pipefail
+          DB_PASS="$$(cat /home/airflow/postgres.pwd)"
+          export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt"
+          airflow jobs check --job-type SchedulerJob --hostname $$HOSTNAME
+        '
       interval: 30s
       timeout: 10s
       retries: 3
@@ -171,9 +202,7 @@ services:
     container_name: airflow-worker
     hostname: airflow-worker
     volumes:
-      - *ca-crt
-      - *api-jwt
-      - *redis-pwd
+      - ../../var/.vault/users/airflow:/tmp/airflow:ro
       - ../../var/dags:/opt/airflow/dags:ro
       - ../../var/plugins:/opt/airflow/plugins:ro
     env_file:
@@ -193,10 +222,21 @@ services:
       - AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS__VISIBILITY_TIMEOUT=20000
     entrypoint: [ ]
     command: >
-      bash -c 'export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)" &&
-            export REDIS_PWD="$$(cat /home/airflow/redis.pwd)" &&
-            export AIRFLOW__CELERY__BROKER_URL="redis://:$${REDIS_PWD}@airflow-redis-1:6379/0" &&
-            exec airflow celery worker'
+      bash -c '
+        set -e
+        set -o pipefail
+        mkdir -p /home/airflow
+        cp -r /tmp/airflow/. /home/airflow/
+        chmod 400 /home/airflow/airflow-api.jwt
+        chmod 400 /home/airflow/airflow-api.key
+        chmod 400 /home/airflow/airflow-api.pwd
+        chmod 400 /home/airflow/postgres.pwd
+        chmod 400 /home/airflow/redis.pwd
+        export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)"
+        export REDIS_PWD="$$(cat /home/airflow/redis.pwd)"
+        export AIRFLOW__CELERY__BROKER_URL="redis://:$${REDIS_PWD}@airflow-redis-1:6379/0"
+        exec airflow celery worker
+      '
     depends_on:
       airflow-redis-1:
         condition: service_healthy
@@ -209,9 +249,11 @@ services:
     healthcheck:
       test: >
         bash -c '
-        REDIS_PWD=$$(cat /home/airflow/redis.pwd) &&
-        AIRFLOW__CELERY__BROKER_URL="redis://:$$REDIS_PWD@airflow-redis-1:6379/0" &&
-        celery --app airflow.providers.celery.executors.celery_executor.app \
+          set -e
+          set -o pipefail
+          REDIS_PWD=$$(cat /home/airflow/redis.pwd)
+          AIRFLOW__CELERY__BROKER_URL="redis://:$$REDIS_PWD@airflow-redis-1:6379/0"
+          celery --app airflow.providers.celery.executors.celery_executor.app \
           -b "$$AIRFLOW__CELERY__BROKER_URL" \
           inspect ping \
           -d celery@$$HOSTNAME
@@ -228,10 +270,7 @@ services:
     container_name: airflow-triggerer
     hostname: airflow-triggerer
     volumes:
-      - *ca-crt
-      - *api-jwt
-      - *redis-pwd
-      - *db-pwd
+      - ../../var/.vault/users/airflow:/tmp/airflow:ro
     env_file:
       - ./airflow-core.env
       - ./airflow-triggerer.env
@@ -242,12 +281,22 @@ services:
       - AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS__VISIBILITY_TIMEOUT=20000
     entrypoint: [ ]
     command: >
-        bash -c 'export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)" &&
-            export REDIS_PWD="$$(cat /home/airflow/redis.pwd)" &&
-            export AIRFLOW__CELERY__BROKER_URL="redis://:$${REDIS_PWD}@airflow-redis-1:6379/0" &&
-            DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
-            export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
-            exec airflow triggerer'
+        bash -c '
+          set -e
+          set -o pipefail
+          cp -r /tmp/airflow/. /home/airflow/
+          chmod 400 /home/airflow/airflow-api.jwt
+          chmod 400 /home/airflow/airflow-api.key
+          chmod 400 /home/airflow/airflow-api.pwd
+          chmod 400 /home/airflow/postgres.pwd
+          chmod 400 /home/airflow/redis.pwd
+          export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)"
+          export REDIS_PWD="$$(cat /home/airflow/redis.pwd)"
+          export AIRFLOW__CELERY__BROKER_URL="redis://:$${REDIS_PWD}@airflow-redis-1:6379/0"
+          DB_PASS="$$(cat /home/airflow/postgres.pwd)"
+          export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt"
+          exec airflow triggerer
+        '
     depends_on:
       airflow-redis-1:
         condition: service_healthy
@@ -256,10 +305,13 @@ services:
     healthcheck:
       test: >
         bash -c '
-          export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)" &&
-          DB_PASS="$$(cat /home/airflow/postgres.pwd)" &&
-          export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt" &&
-          airflow jobs check --job-type TriggererJob --hostname $$HOSTNAME'
+          set -e
+          set -o pipefail
+          export AIRFLOW__API_AUTH__JWT_SECRET="$$(cat /home/airflow/airflow-api.jwt)"
+          DB_PASS="$$(cat /home/airflow/postgres.pwd)"
+          export AIRFLOW__DATABASE__SQL_ALCHEMY_CONN="postgresql+psycopg2://airflow:$${DB_PASS}@airflow-db:5432/airflow?sslmode=verify-ca&sslrootcert=/home/airflow/ca.crt"
+          airflow jobs check --job-type TriggererJob --hostname $$HOSTNAME
+        '
       interval: 30s
       timeout: 10s
       retries: 3

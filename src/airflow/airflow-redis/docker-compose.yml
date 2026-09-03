@@ -1,10 +1,5 @@
 
 x-config:
-  redis-conf: &redis-conf "./redis.conf:/usr/local/etc/redis/redis.conf:ro"
-  redis-key: &redis-key "../../../var/.vault/airflow-redis/redis.key:/usr/local/etc/redis/redis.key:ro"
-  redis-pwd: &redis-pwd "../../../var/.vault/airflow-redis/redis.pwd:/usr/local/etc/redis/redis.pwd:ro"
-  redis-crt: &redis-crt "../../../var/.vault/airflow-redis/redis.crt:/usr/local/etc/redis/redis.crt:ro"
-  ca-crt: &ca-crt "../../../var/.vault/ca/ca.crt:/usr/local/etc/redis/ca.crt:ro"
   image: &image "ghcr.io/gigaflux/airflow-redis:7.2"
 
 services:
@@ -13,20 +8,34 @@ services:
     container_name: airflow-redis-1
     hostname: airflow-redis-1
     volumes:
-      - *redis-conf
-      - *redis-key
-      - *redis-pwd
-      - *redis-crt
-      - *ca-crt
+      - ../../../var/.vault/users/redis:/tmp/redis:ro
+      - ./redis.conf:/tmp/redis.conf:ro
       - airflow-redis-1_data:/data
+    user: root
+    entrypoint: [ ]
+    command: >
+      sh -c '
+        set -e
+        mkdir -p /usr/local/etc/redis
+        cp -r /tmp/redis/. /usr/local/etc/redis/
+        cp -f /tmp/redis.conf /usr/local/etc/redis
+        chmod 400 /usr/local/etc/redis/redis.key
+        chmod 400 /usr/local/etc/redis/redis.pwd
+        chown -R redis:redis /usr/local/etc/redis
+        REDIS_PWD=$$(cat /usr/local/etc/redis/redis.pwd)
+        export REDISCLI_AUTH=$$REDIS_PWD
+        exec /usr/local/bin/docker-entrypoint.sh redis-server /usr/local/etc/redis/redis.conf
+      '
     networks:
       - airflow-net
     healthcheck:
       test: >
         sh -c '
-        REDIS_PWD=$$(cat /usr/local/etc/redis/redis.pwd) &&
-        export REDISCLI_AUTH=$$REDIS_PWD &&
-        redis-cli ping'
+          set -e
+          REDIS_PWD=$$(cat /usr/local/etc/redis/redis.pwd) &&
+          export REDISCLI_AUTH=$$REDIS_PWD &&
+          redis-cli ping
+        '
       interval: 30s
       timeout: 10s
       retries: 3
