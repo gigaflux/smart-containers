@@ -55,7 +55,7 @@ services:
         - AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS=admin:ADMIN,dev:ADMIN
         - AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE=/home/airflow/users.json
       ports:
-        - "127.0.0.1:8080:8080"
+        - "8080:8080"
       entrypoint: [ ]
       command: >
         bash -c '
