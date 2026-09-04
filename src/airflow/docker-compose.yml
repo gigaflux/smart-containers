@@ -49,7 +49,8 @@ services:
       environment:
         - AIRFLOW__API__SSL_CERT=/home/airflow/airflow-api.crt
         - AIRFLOW__API__SSL_KEY=/home/airflow/airflow-api.key
-        - AIRFLOW__API__BASE_URL=https://airflow-api:8080
+        - AIRFLOW__CORE__INTERNAL_API_URL=https://airflow-api:8080
+        - AIRFLOW__CORE__EXECUTION_API_SERVER_URL=https://airflow-api:8080/execution/
         - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
         - AIRFLOW__SCHEDULER__STANDALONE_DAG_PROCESSOR=True
         - AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS=admin:ADMIN,dev:ADMIN
@@ -102,6 +103,7 @@ services:
       - ./airflow-dag.env
     environment:
       - AIRFLOW__API__SSL_CERT=/home/airflow/ca.crt
+      - AIRFLOW__CORE__INTERNAL_API_URL=https://airflow-api:8080
       - AIRFLOW__CORE__EXECUTION_API_SERVER_URL=https://airflow-api:8080/execution/
       - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
       - AIRFLOW__SCHEDULER__STANDALONE_DAG_PROCESSOR=True
@@ -154,6 +156,7 @@ services:
       - ./airflow-scheduler.env
     environment:
       - AIRFLOW__API__SSL_CERT=/home/airflow/ca.crt
+      - AIRFLOW__CORE__INTERNAL_API_URL=https://airflow-api:8080
       - AIRFLOW__CORE__EXECUTION_API_SERVER_URL=https://airflow-api:8080/execution/
       - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
       - AIRFLOW__SCHEDULER__STANDALONE_DAG_PROCESSOR=True
@@ -210,6 +213,7 @@ services:
       - ./airflow-worker.env
     environment:
       - AIRFLOW__API__SSL_CERT=/home/airflow/ca.crt
+      - AIRFLOW__CORE__INTERNAL_API_URL=https://airflow-api:8080
       - AIRFLOW__CORE__EXECUTION_API_SERVER_URL=https://airflow-api:8080/execution/
       - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
       - AIRFLOW__CORE__DAGS_FOLDER=/opt/airflow/dags
@@ -276,6 +280,7 @@ services:
       - ./airflow-triggerer.env
     environment:
       - AIRFLOW__API__SSL_CERT=/home/airflow/ca.crt
+      - AIRFLOW__CORE__INTERNAL_API_URL=https://airflow-api:8080
       - AIRFLOW__CORE__EXECUTION_API_SERVER_URL=https://airflow-api:8080/execution/
       - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
       - AIRFLOW__CELERY__BROKER_TRANSPORT_OPTIONS__VISIBILITY_TIMEOUT=20000
